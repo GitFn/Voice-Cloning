@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHP语音克隆API - 生产环境版</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-top: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: box-shadow 0.3s ease;
+        }
+        .card:hover {
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        .card-header {
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+            border-color: #0056b3;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .alert {
+            margin-top: 15px;
+        }
+        .hidden {
+            display: none;
+        }
+        .audio-player {
+            margin-top: 15px;
+            width: 100%;
+        }
+        #history-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .history-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .history-item:last-child {
+            border-bottom: none;
+        }
+        .history-text {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .history-time {
+            font-size: 0.8rem;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">语音克隆API</h1>
+        <p class="text-center text-muted mb-5">上传5-60秒音频，克隆您的声音，生成个性化语音</p>
+
+        <!-- 登录/注册区域 -->
+        <div class="card" id="auth-section">
+            <div class="card-header">用户认证</div>
+            <div class="card-body">
+                <div id="auth-alert" class="alert d-none"></div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5 class="mb-3">登录</h5>
+                        <div class="form-group">
+                            <label for="login-email">邮箱</label>
+                            <input type="email" class="form-control" id="login-email" placeholder="请输入邮箱">
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">密码</label>
+                            <input type="password" class="form-control" id="login-password" placeholder="请输入密码">
+                        </div>
+                        <button class="btn btn-primary" onclick="login()">登录</button>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <h5 class="mb-3">注册</h5>
+                        <div class="form-group">
+                            <label for="register-username">用户名</label>
+                            <input type="text" class="form-control" id="register-username" placeholder="请输入用户名">
+                        </div>
+                        <div class="form-group">
+                            <label for="register-email">邮箱</label>
+                            <input type="email" class="form-control" id="register-email" placeholder="请输入邮箱">
+                        </div>
+                        <div class="form-group">
+                            <label for="register-password">密码</label>
+                            <input type="password" class="form-control" id="register-password" placeholder="请输入密码（至少6位）">
+                        </div>
+                        <button class="btn btn-primary" onclick="register()">注册</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 语音模型管理区域 -->
+        <div class="card hidden" id="voice-section">
+            <div class="card-header">语音模型管理</div>
+            <div class="card-body">
+                <div id="voice-alert" class="alert d-none"></div>
+                
+                <h5 class="mb-3">创建语音模型</h5>
+                <div class="form-group">
+                    <label for="voice-name">模型名称</label>
+                    <input type="text" class="form-control" id="voice-name" placeholder="请输入模型名称">
+                </div>
+                <div class="form-group">
+                    <label for="voice-audio">音频文件</label>
+                    <input type="file" class="form-control" id="voice-audio" accept="audio/mp3,audio/wav,audio/ogg,audio/m4a">
+                    <small class="form-text text-muted">请上传5-60秒的干净音频文件</small>
+                </div>
+                <button class="btn btn-primary mb-4" onclick="createVoice()">创建模型</button>
+                
+                <h5 class="mb-3">我的语音模型</h5>
+                <div class="form-group">
+                    <label for="voices">选择语音模型</label>
+                    <select class="form-control" id="voices"></select>
+                </div>
+                <button class="btn btn-secondary" onclick="loadVoices()">刷新模型列表</button>
+            </div>
+        </div>
+
+        <!-- 文字转语音区域 -->
+        <div class="card hidden" id="tts-section">
+            <div class="card-header">文字转语音</div>
+            <div class="card-body">
+                <div id="tts-alert" class="alert d-none"></div>
+                
+                <div class="form-group">
+                    <label for="tts-text">输入文字</label>
+                    <textarea class="form-control" id="tts-text" rows="4" placeholder="请输入要转换为语音的文字"></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="textToSpeech()">生成语音</button>
+                
+                <div id="tts-result" class="mt-4 hidden">
+                    <h6>生成的语音</h6>
+                    <audio id="audio-player" class="audio-player" controls></audio>
+                </div>
+            </div>
+        </div>
+
+        <!-- 历史记录区域 -->
+        <div class="card hidden" id="history-section">
+            <div class="card-header">生成历史</div>
+            <div class="card-body">
+                <div id="history-list"></div>
+                <button class="btn btn-secondary mt-3" onclick="loadHistory()">刷新历史记录</button>
+            </div>
+        </div>
+
+        <!-- 退出登录按钮 -->
+        <div class="text-center mb-5">
+            <button class="btn btn-danger hidden" id="logout-btn" onclick="logout()">退出登录</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // API基础URL
+        const API_BASE_URL = '/single_api.php/api';
+        let token = localStorage.getItem('voice-clone-token');
+        
+        // 页面加载时检查登录状态
+        window.onload = function() {
+            // 检查API是否正常工作
+            checkAPIHealth();
+            
+            // 如果已登录，显示已认证的区域
+            if (token) {
+                showAuthenticatedSections();
+                loadVoices();
+                loadHistory();
+            }
+        };
+
+        // 检查API健康状态
+        function checkAPIHealth() {
+            fetch(API_BASE_URL + '/health')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status !== 'success') {
+                        showAlert('API服务异常，请检查服务器配置', 'danger', 'auth-alert');
+                    }
+                })
+                .catch(error => {
+                    showAlert('无法连接到API服务，请检查服务器配置', 'danger', 'auth-alert');
+                });
+        }
+
+        // 显示提示信息
+        function showAlert(message, type, containerId) {
+            const alertDiv = document.getElementById(containerId);
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            alertDiv.classList.remove('d-none');
+            
+            // 3秒后自动隐藏
+            setTimeout(() => {
+                alertDiv.classList.add('d-none');
+            }, 3000);
+        }
+
+        // 注册
+        function register() {
+            const username = document.getElementById('register-username').value.trim();
+            const email = document.getElementById('register-email').value.trim();
+            const password = document.getElementById('register-password').value;
+            
+            // 验证输入
+            if (!username) {
+                showAlert('请输入用户名', 'danger', 'auth-alert');
+                return;
+            }
+            if (!email) {
+                showAlert('请输入邮箱', 'danger', 'auth-alert');
+                return;
+            }
+            if (password.length < 6) {
+                showAlert('密码长度不能少于6位', 'danger', 'auth-alert');
+                return;
+            }
+            
+            fetch(API_BASE_URL + '/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username, email, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showAlert(data.message, 'success', 'auth-alert');
+                    token = data.data.token;
+                    localStorage.setItem('voice-clone-token', token);
+                    showAuthenticatedSections();
+                    loadVoices();
+                    loadHistory();
+                } else {
+                    showAlert(data.message, 'danger', 'auth-alert');
+                }
+            })
+            .catch(error => {
+                showAlert('注册失败，请稍后重试', 'danger', 'auth-alert');
+                console.error('注册失败:', error);
+            });
+        }
+
+        // 登录
+        function login() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            
+            // 验证输入
+            if (!email) {
+                showAlert('请输入邮箱', 'danger', 'auth-alert');
+                return;
+            }
+            if (!password) {
+                showAlert('请输入密码', 'danger', 'auth-alert');
+                return;
+            }
+            
+            fetch(API_BASE_URL + '/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showAlert(data.message, 'success', 'auth-alert');
+                    token = data.data.token;
+                    localStorage.setItem('voice-clone-token', token);
+                    showAuthenticatedSections();
+                    loadVoices();
+                    loadHistory();
+                } else {
+                    showAlert(data.message, 'danger', 'auth-alert');
+                }
+            })
+            .catch(error => {
+                showAlert('登录失败，请稍后重试', 'danger', 'auth-alert');
+                console.error('登录失败:', error);
+            });
+        }
+
+        // 退出登录
+        function logout() {
+            token = null;
+            localStorage.removeItem('voice-clone-token');
+            
+            // 显示认证区域，隐藏其他区域
+            document.getElementById('auth-section').classList.remove('hidden');
+            document.getElementById('voice-section').classList.add('hidden');
+            document.getElementById('tts-section').classList.add('hidden');
+            document.getElementById('history-section').classList.add('hidden');
+            document.getElementById('logout-btn').classList.add('hidden');
+            
+            showAlert('已退出登录', 'info', 'auth-alert');
+        }
+
+        // 显示已认证的区域
+        function showAuthenticatedSections() {
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('voice-section').classList.remove('hidden');
+            document.getElementById('tts-section').classList.remove('hidden');
+            document.getElementById('history-section').classList.remove('hidden');
+            document.getElementById('logout-btn').classList.remove('hidden');
+        }
+
+        // 创建语音模型
+        function createVoice() {
+            const name = document.getElementById('voice-name').value.trim() || 'My Voice';
+            const audioFile = document.getElementById('voice-audio').files[0];
+            
+            if (!audioFile) {
+                showAlert('请选择音频文件', 'danger', 'voice-alert');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('audio', audioFile);
+            
+            showAlert('正在创建语音模型...', 'info', 'voice-alert');
+            
+            fetch(API_BASE_URL + '/voices', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showAlert(data.message, 'success', 'voice-alert');
+                    loadVoices();
+                    // 清空文件选择
+                    document.getElementById('voice-audio').value = '';
+                } else {
+                    showAlert(data.message, 'danger', 'voice-alert');
+                }
+            })
+            .catch(error => {
+                showAlert('创建失败，请稍后重试', 'danger', 'voice-alert');
+                console.error('创建语音模型失败:', error);
+            });
+        }
+
+        // 加载语音模型列表
+        function loadVoices() {
+            fetch(API_BASE_URL + '/voices', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const select = document.getElementById('voices');
+                    select.innerHTML = '';
+                    
+                    if (data.data.length === 0) {
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = '暂无语音模型，请先创建';
+                        option.disabled = true;
+                        select.appendChild(option);
+                        return;
+                    }
+                    
+                    data.data.forEach(voice => {
+                        const option = document.createElement('option');
+                        option.value = voice.id;
+                        option.textContent = `${voice.name} (${voice.sample_count}个样本) - ${voice.status}`;
+                        select.appendChild(option);
+                    });
+                } else {
+                    showAlert('加载语音模型失败', 'danger', 'voice-alert');
+                }
+            })
+            .catch(error => {
+                console.error('加载语音模型失败:', error);
+            });
+        }
+
+        // 文字转语音
+        function textToSpeech() {
+            const voiceModelId = document.getElementById('voices').value;
+            const text = document.getElementById('tts-text').value.trim();
+            
+            // 验证输入
+            if (!voiceModelId) {
+                showAlert('请选择语音模型', 'danger', 'tts-alert');
+                return;
+            }
+            if (!text) {
+                showAlert('请输入要转换的文字', 'danger', 'tts-alert');
+                return;
+            }
+            
+            showAlert('正在生成语音...', 'info', 'tts-alert');
+            
+            fetch(API_BASE_URL + '/tts', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ voice_model_id: voiceModelId, text })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showAlert(data.message, 'success', 'tts-alert');
+                    
+                    // 显示音频播放器
+                    const resultDiv = document.getElementById('tts-result');
+                    const audioPlayer = document.getElementById('audio-player');
+                    audioPlayer.src = data.data.audio_url;
+                    resultDiv.classList.remove('hidden');
+                    
+                    // 更新历史记录
+                    loadHistory();
+                } else {
+                    showAlert(data.message, 'danger', 'tts-alert');
+                }
+            })
+            .catch(error => {
+                showAlert('生成失败，请稍后重试', 'danger', 'tts-alert');
+                console.error('生成语音失败:', error);
+            });
+        }
+
+        // 加载历史记录
+        function loadHistory() {
+            fetch(API_BASE_URL + '/tts/history', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const historyList = document.getElementById('history-list');
+                    historyList.innerHTML = '';
+                    
+                    if (data.data.length === 0) {
+                        historyList.innerHTML = '<p class="text-muted text-center">暂无历史记录</p>';
+                        return;
+                    }
+                    
+                    data.data.forEach(item => {
+                        const div = document.createElement('div');
+                        div.className = 'history-item';
+                        div.innerHTML = `
+                            <div class="history-text">${item.text}</div>
+                            <div class="history-time">${item.created_at}</div>
+                            <audio class="audio-player mt-2" controls src="${item.audio_url}"></audio>
+                        `;
+                        historyList.appendChild(div);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('加载历史记录失败:', error);
+            });
+        }
+    </script>
+</body>
+</html>
